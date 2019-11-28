@@ -2,7 +2,7 @@
 kapacitor-alarm
 ===============
 
-`kapacitor-alart` is the notify manager for kapacitor [exec handler](https://docs.influxdata.com/kapacitor/v1.5/event_handlers/exec/), support nitify aggregation and whitelist features. can be used with [kapacitor-tasks](https://github.com/arstercz/kapacitor-tasks).
+`kapacitor-alart` is a notify manager for kapacitor [exec handler](https://docs.influxdata.com/kapacitor/v1.5/event_handlers/exec/), support nitify aggregation and whitelist features. can be used with [kapacitor-tasks](https://github.com/arstercz/kapacitor-tasks).
 
 **currently only email notifications is support!**
 
@@ -98,6 +98,8 @@ logfile=/var/log/kapalarm/kap-white.log
 dc=beijing                                 # the same as kap-white
 logfile=/var/log/kapalarm/kap-status.log
 ```
+
+## How to use kapacitor-alarm
 
 #### kap-exec
 
