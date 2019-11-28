@@ -38,6 +38,13 @@ kapacitor-alarm
 
 the `kap-white` command can be used to set whitelist to the redis. `kap-exec` will applay whitelist to the aggregation policy. the `kap-status` command can be used to report the current `kapacitor-alarm` status.
 
+`kap-exec` use `2**(sendcnt) == recvcnt` to determin whether to send email or not, read more from [Rule](lib/Kapalarm/Rule.pm):
+```
+ recvcnt: 1 2 3 4 5 6 7 8 ...
+ sendcnt: 1 1 1 2 2 2 2 3 ...
+ is_send: Y N N Y N N N Y....
+```
+
 ## How to install kapacitor-alarm
 
 ### Dependency
@@ -100,9 +107,9 @@ logfile=/var/log/kapalarm/kap-status.log
 
 ## How to use kapacitor-alarm
 
-[kap-exec](#kap-exec)
-[kap-white](#kap-white)
-[kap-status](#kap-status)
+[kap-exec](#kap-exec)  
+[kap-white](#kap-white)  
+[kap-status](#kap-status)  
 
 #### kap-exec
 
