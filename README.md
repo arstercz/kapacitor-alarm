@@ -46,7 +46,6 @@ the `kap-white` command can be used to set whitelist to the redis. `kap-exec` wi
 ```
 perl-Data-Dumper
 perl-TimeDate
-perl-TimeDate
 perl-Digest-MD5
 perl-Redis
 perl-JSON
