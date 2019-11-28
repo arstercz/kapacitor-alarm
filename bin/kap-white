@@ -1,0 +1,318 @@
+#!/usr/bin/env perl
+=pod
+
+=head1 NAME
+
+kap-white - change the whitelist to determine whether send email
+            or not, also work with kap-exec.
+
+=head1 SYNIPSIS
+
+Usage: kap-status [OPTION...]
+
+=head1 RISKS
+
+  1. need redis instance;
+
+=cut
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Data::Dumper;
+use Carp;
+use Config::IniFiles;
+use Kapalarm::Common qw(time_print);
+use Kapalarm::Log;
+use Kapalarm::Redis;
+
+my ($debug, $help, $dc, $host, $metric);
+my $redis = "127.0.0.1:6379";
+my $conf  = "/etc/kapalarm/kap.conf";
+my $type  = "dc"; # must be dc, host or metric;
+my ($enable, $disable);
+my $list  = 1;
+
+GetOptions(
+  "conf=s"   => \$conf,
+  "debug!"   => \$debug,
+  "dc=s"     => \$dc,
+  "host=s"   => \$host,
+  "metric=s" => \$metric,
+  "type=s"   => \$type,
+  "enable!"  => \$enable,
+  "disable"  => \$disable,
+  "list!"    => \$list,
+  "help!"    => \$help,
+) or die "error: $!";
+
+if ($help) {
+  system("perldoc -T $0");
+  exit 0;
+}
+
+unless (-e $conf) {
+  print "[warn] must set conf options!\n";
+  exit 1;
+}
+
+if ($enable && $disable) {
+  die "can not both set enable/disable!";
+}
+
+$conf   = "./$conf" if $conf && $conf =~ /^[^\/]/;
+my $cfg = Config::IniFiles->new(-file => "$conf")
+          or die "parse $conf error: $!";
+
+my $enable_white = 1;
+if(defined $cfg->val("kapalarm", "enable_whitelist")) {
+  $enable_white = $cfg->val("kapalarm", "enable_whitelist");
+}
+
+# kap-white option
+$dc = $cfg->val("kap-white", "dc") unless defined $dc;
+my $logfile  = 
+    $cfg->val("kap-white", "logfile") || "/tmp/$0.log";
+
+my $log = 
+   Kapalarm::Log->new(
+     'filename' => "$logfile",
+     'min_level'=> "debug",
+     'mode'     => 'append',
+   );
+
+$log->debug("generate log record...") if $debug;
+
+my $redis_pass;
+my $key_prefix = '';
+if ($cfg->val("redis", "host")) {
+  $redis      = $cfg->val("redis", "host");
+  $redis_pass = $cfg->val("redis", "password") || undef;
+  $key_prefix = $cfg->val("redis", "prefix");
+
+  $log->info("get redis host: $redis");
+}
+
+my $redis_r = 
+  Kapalarm::Redis->new(
+    server   => "$redis",
+    password => $redis_pass,
+    prefix   => $key_prefix,
+    log      => $log,
+  );
+
+sub is_check_ok {
+  my $type   = shift;
+  my $dc     = shift;
+  my $host   = shift;
+  my $metric = shift;
+
+  my $status = 0;
+  if ($type eq 'dc') {
+    if (defined $dc) {
+      $status = 1;
+    }
+    else {
+      print "[warn] need dc option when type is dc\n";
+    }
+    return $status;
+  }
+
+  if ($type eq 'host') {
+    if (defined $dc && defined $host) {
+      $status = 1;
+    }
+    else {
+      print "[warn] need dc and host option when type is host\n";
+    }
+
+    return $status;
+  }
+
+  if ($type eq 'metric') {
+    if (defined $dc && defined $host
+         && defined $metric) {
+      $status = 1;
+    }
+    else {
+      print "[warn] need dc, host and metric when type is metric\n";
+    }
+    return $status;
+  }
+
+  
+  print("[warn] type option must be dc, host or metric!\n");
+  return $status;
+}
+
+# white list status will be false(0) when cann't find item.
+sub white_get {
+  my $r      = shift;
+  my $type   = shift;
+  my $dc     = shift;
+  my $host   = shift;
+  my $metric = shift;
+
+  if ($type eq 'dc') {
+
+    my $item = $r->white_get_dc($dc) || 0;
+    if ($type eq 'dc') {
+      print "[$dc] whitelist status: $item\n";
+    }
+  }
+
+  if ($type eq 'host') {
+    my $item   = $r->white_get_host_all($dc, $host);
+    unless (defined $item->{is_white}) {
+      print "[$dc/$host] cannot find host: $host!\n";
+      return 0;
+    }
+    my $status = $item->{is_white};
+    print "[$dc/$host] whitelist status: $status\n";
+  }
+
+  if ($type eq 'metric') {
+    my $item   = $r->white_get_host_all($dc, $host);
+    unless (defined $item->{$metric}) {
+      print "[$dc/$host/$metric] cannot find metric: $metric!\n";
+      return 0;
+    }
+    my $status = $item->{$metric};
+    print "[$dc/$host/$metric] whitelist status: $status\n";
+  }
+}
+
+sub white_set {
+  my $r     =   shift;
+  my $type  =   shift;
+  my $value =   shift;
+  my $dc    =   shift;
+  my $host  =   shift;
+  my $metric = shift;
+
+  # set dc to whitelist
+  if ($type eq 'dc') {
+    if ($r->white_set_dc($dc, $value)) {
+      $log->info("set [$dc] to $value ok!");
+      time_print("set [$dc] to $value ok!");
+    }
+    else {
+      time_print("set [$dc] to $value error!");
+    }
+  }
+
+  # set host to whitelist
+  if ($type eq 'host') {
+    if ($r->white_set_host($dc, $host, $value)) {
+      $log->info("set [$dc/$host] to $value ok");
+      time_print("set [$dc/$host] to $value ok");
+    }
+    else {
+      time_print("set [$dc] to $value error!");
+    }
+  }
+
+  if ($type eq 'metric') {
+    if ($r->white_set_metric($dc, $host, $metric, $value)) {
+      $log->info("set [$dc/$host/$metric] to $value ok");
+      time_print("set [$dc/$host/$metric] to $value ok");
+    }
+    else {
+      time_print("set [$dc/$host/$metric] to $value error");
+    }
+  }
+}
+
+# meet the conditions
+unless ($redis_r->is_white_dc_exist($dc)) {
+  print "[warn] can not find dc: $dc!\n";
+  exit 1;
+}
+
+unless (is_check_ok($type, $dc, $host, $metric)) {
+  exit 1;
+}
+
+unless ($enable_white) {
+  print("[info] enable_whitelist is false in /etc/kapalarm/kap.conf\n");
+  exit 0;
+}
+
+if ($list && !$enable && !$disable) {
+  white_get($redis_r, $type, $dc, $host, $metric);
+}
+
+if ($enable) {
+  white_set($redis_r, $type, 1, $dc, $host, $metric);
+}
+
+if ($disable) {
+  white_set($redis_r, $type, 0, $dc, $host, $metric);
+}
+
+# ###################################################################
+# Documentation.
+# ###################################################################
+
+=head1 OPTIONS
+
+=over 4
+
+=item conf
+
+email, redis.. config file, default is /etc/kapalarm/kap.conf,
+
+=item redis
+
+  redis server, default is 127.0.0.1:6379, redis in conf will
+  overwrite this option.
+
+=item enable
+
+  enable the item to whitelist, exclusion with 
+  list option. default is false.
+
+=item disable
+
+  disable the item to whitelist, exclusion with
+  list option. default is false.
+
+=item list
+
+  only get whitelist status based on differenct type. 
+  exclusion with update option, default is true.
+
+=item type
+
+  get/set whitelist status in a hierarchical manner:
+    dc:     enable/disable the whole dc hosts
+    host:   enable/disable only one dc/host
+    metric: enable/disable only on dc/host/metric
+
+=item dc
+
+  data center option, corresponding to kap-exec dc parse.
+
+=item host
+
+  host option, dc must be set when to the host of one data centor.
+
+=item metric
+
+  metric option, dc and host option must be set when to set host's metric.
+
+=item help
+
+  print help info.
+
+=back
+
+=head1 AUTHOR
+
+arstercz@gmail.com
+
+=head1 CHANGELOG
+
+v0.1.0 version
+
+=cut

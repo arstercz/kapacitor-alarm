@@ -1,0 +1,234 @@
+#!/usr/bin/env perl
+=pod
+
+=head1 NAME
+
+kap-status - report the kapalarm status
+
+=head1 SYNIPSIS
+
+Usage: kap-status [OPTION...]
+
+=head1 RISKS
+
+  1. need redis instance;
+
+=cut
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Data::Dumper;
+use Carp;
+use Config::IniFiles;
+use Kapalarm::Common qw(time_print);
+use Kapalarm::Log;
+use Kapalarm::Redis;
+use Kapalarm::Rule qw(is_send);
+
+my ($debug, $help, $dc, $host);
+my $redis = "127.0.0.1:6379";
+my $conf  = "/etc/kapalarm/kap.conf";
+
+GetOptions(
+  "conf=s"  => \$conf,
+  "debug!"  => \$debug,
+  "dc=s"    => \$dc,
+  "host=s"  => \$host,
+  "help!"   => \$help,
+) or die "error: $!";
+
+if ($help) {
+  system("perldoc -T $0");
+  exit 0;
+}
+
+unless (-e $conf) {
+  print "[warn] must set conf options!\n";
+  exit 1;
+}
+
+$conf = "./$conf" if $conf && $conf =~ /^[^\/]/;
+
+my $cfg = Config::IniFiles->new(-file => "$conf")
+          or die "parse $conf error: $!";
+
+# kap-white option
+$dc = $cfg->val("kap-status", "dc") unless defined $dc;
+my $logfile  = 
+    $cfg->val("kap-status", "logfile") || "/tmp/$0.log";
+
+my $log = 
+   Kapalarm::Log->new(
+     'filename' => "$logfile",
+     'min_level'=> "debug",
+     'mode'     => 'append',
+   );
+
+$log->debug("generate log record...") if $debug;
+
+my $redis_pass;
+my $key_prefix = 'kap';
+if ($cfg->val("redis", "host")) {
+  $redis      = $cfg->val("redis", "host");
+  $redis_pass = $cfg->val("redis", "password") || undef;
+  $key_prefix = $cfg->val("redis", "prefix");
+
+  $log->info("get redis host: $redis");
+}
+
+my $redis_r = 
+  Kapalarm::Redis->new(
+    server   => "$redis",
+    password => $redis_pass,
+    prefix   => $key_prefix,
+    log      => $log,
+  );
+
+sub dump_report {
+  my $status = shift;
+
+  if (defined($status->{dc_white})) {
+    print   "  dc is white:       "
+          . $status->{dc_white} . "\n"
+          . "  hosts num:         "
+          . $status->{host_count} . "\n"
+          . "  white hosts num:   "
+          . $status->{white_host_count} . "\n"
+          . "  white metrics num: " 
+          . $status->{white_metric_count} . "\n"
+          . "  white hosts list:  "
+          . join(', ', sort @{$status->{white_hosts}}) . "\n\n";
+
+    return 1;
+  }
+
+  if (defined($status->{white_metrics})) {
+    print  "  white metrics: " 
+           . join(', ', @{$status->{white_metrics}}) . "\n\n";
+
+    return 1;
+  }
+
+  print  "  [info] can not get status\n\n";
+  return 0;
+}
+
+sub report_status {
+  my $dc     = shift;
+  my $host   = shift;
+  my $status = shift;
+
+  unless($status) {
+    print "[info] null status\n";
+    return 0;
+  }
+
+  if (!$dc && !$host) {
+    foreach my $k (%$status) {
+      print "[$k]\n";
+      dump_report($status->{$k});
+    }
+    return 1;
+  }
+
+  if ($dc && !$host) {
+    print "[$dc]\n";
+    dump_report($status->{$dc});
+    return 1;
+  }
+
+  if ($dc && $host) {
+    print "[$dc/$host]\n";
+    dump_report($status->{$dc}->{$host});
+    return 1;
+  }
+}
+
+sub get_status {
+  my $r     = shift;
+  my $lists = $r->meta_dc_get();
+
+  my %status;
+  foreach my $k (@$lists) {
+    $status{$k}{dc_white} = $r->white_get_dc($dc) || 0;
+    my $hosts = $r->meta_host_get($k);
+    foreach my $h (@$hosts) {
+      $status{$k}{host_count}++;
+      my $item   = $r->white_get_host_all($dc, $h);
+      foreach my $m (keys %$item) {
+        my $v = $item->{$m} || 0;
+        if ($m eq 'is_white') {
+          if ($v) {
+            $status{$k}{white_host_count}++;
+            push @{$status{$k}{white_hosts}}, $h;
+          }
+          else {
+            $status{$k}{nonwhite_host_count}++;
+          }
+        }
+        else {
+          if ($v) {
+            $status{$k}{white_metric_count}++;
+            push @{$status{$k}{$h}{white_metrics}}, $m;
+          }
+          else {
+            $status{$k}{nonwhite_metric_count}++;
+          }
+        }
+      }
+    }
+  }
+
+  return \%status;
+}
+
+unless ($redis_r->is_white_dc_exist($dc)) {
+  print "[warn] can not find dc: $dc!\n";
+  exit 1;
+}
+
+report_status($dc, $host, get_status($redis_r));
+
+
+
+# ###################################################################
+# Documentation.
+# ###################################################################
+
+=head1 OPTIONS
+
+=over 4
+
+=item conf
+
+email, redis.. config file, default is /etc/kapalarm/kap.conf,
+
+=item redis
+
+  redis server, default is 127.0.0.1:6379, redis in conf will
+  overwrite this option.
+
+=item dc
+
+  report dc status
+
+=item host
+
+  report host status, must give dc option
+
+=item help
+
+  print help info.
+
+=back
+
+=head1 AUTHOR
+
+arstercz@gmail.com
+
+=head1 CHANGELOG
+
+v0.1.0 version
+
+=cut

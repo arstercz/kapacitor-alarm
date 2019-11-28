@@ -1,0 +1,310 @@
+#!/usr/bin/env perl
+=pod
+
+=head1 NAME
+
+kap-exec - kapacitor exec handler's script, it's useful to get kapacitor
+           response, send to redis and send alarm email.
+
+=head1 SYNIPSIS
+
+Usage: kap-exec [OPTION...]
+
+=head1 RISKS
+
+  1. need redis instance;
+
+=cut
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Data::Dumper;
+use Carp;
+use JSON;
+use Config::IniFiles;
+use Kapalarm::Common qw(utc_to_local msg_finger msg_md5 msg_quote second_convert);
+use Kapalarm::Log;
+use Kapalarm::Redis;
+use Kapalarm::Rule qw(is_send is_white);
+use Kapalarm::Email;
+
+my ($debug, $help);
+my $redis = "127.0.0.1:6379";
+my $conf  = "/etc/kapalarm/kap.conf";
+
+GetOptions(
+  "conf=s"  => \$conf,
+  "debug!"  => \$debug,
+  "redis=s" => \$redis,
+  "help!"   => \$help,
+) or die "error: $!";
+
+if ($help) {
+  system("perldoc -T $0");
+  exit 0;
+}
+
+unless (-e $conf) {
+  print "[warn] must set conf options!\n";
+  exit 1;
+}
+
+$conf = "./$conf" if $conf && $conf =~ /^[^\/]/;
+
+my $cfg = Config::IniFiles->new(-file => "$conf")
+          or die "parse $conf error: $!";
+
+my $boundary     = $cfg->val("kapalarm", "send_boundary") || 15;
+my $tryfail      = $cfg->val("kapalarm", "try_on_failure") || 3;
+my $logfile  = 
+    $cfg->val("kap-exec", "logfile") || "/tmp/$0.log";
+my $default_dc =
+    $cfg->val("kap-exec", "default_dc") || 'kapalarm';
+
+my $enable_white = 1;
+if(defined $cfg->val("kapalarm", "enable_whitelist")) {
+  $enable_white = $cfg->val("kapalarm", "enable_whitelist");
+}
+
+my $log = 
+   Kapalarm::Log->new(
+     'filename' => "$logfile",
+     'min_level'=> "debug",
+     'mode'     => 'append',
+   );
+
+$log->debug("generate log record...") if $debug;
+
+my $redis_pass;
+my $key_prefix = '';
+
+if ($cfg->val("redis", "host")) {
+  $redis      = $cfg->val("redis", "host");
+  $redis_pass = $cfg->val("redis", "password") || undef;
+  $key_prefix = $cfg->val("redis", "prefix");
+
+  $log->info("get redis host: $redis");
+}
+
+my $redis_r = 
+  Kapalarm::Redis->new(
+    server   => "$redis",
+    password => $redis_pass,
+    prefix   => $key_prefix,
+    log      => $log,
+  );
+
+sub get_msg_meta {
+  # WARNING: beijing/dbhost/memory - used_pct: 70.26%, used: 88.00GB, buffer/cached: 26.00GB, total:125.00GB
+  my $message = shift;
+  my ($meta) = ($message =~ /^\w+:\s+(.+?)\s+.+/);
+
+  return split(/(?:\/|\#|\\|\$)/, $meta, 3);
+}
+sub parse_kapjson {
+  my $text = shift;
+  my $default_dc = shift;
+  my $json = from_json($text, allow_nonref => 1, utf8 => 1);
+  my %res_hash;
+
+  $res_hash{id}     = $json->{id};
+  $res_hash{level}  = $json->{level};
+  $res_hash{plevel} = $json->{previousLevel};
+  $res_hash{time}   = utc_to_local($json->{time});
+  $res_hash{sample}   = msg_quote($json->{message});
+  $res_hash{duration} = int($json->{duration} / 100000000); # second unit
+  $res_hash{finger}   = msg_md5(msg_finger($json->{message}));
+  $res_hash{recvcnt}  = 1;
+  $res_hash{sendcnt}  = 0;
+
+  my ($dc, $host, $metric) = get_msg_meta($json->{message});
+  $res_hash{dc}     = $dc || $default_dc;
+  $res_hash{host}   = $host;
+  $res_hash{metric} = $metric;
+
+  return \%res_hash;
+}
+
+sub send_mail {
+  my ($cfg, $sec, $list) = @_;
+  my $is_sasl  = $cfg->val($sec, "email_use_sasl") || 0;
+  my $server   = $cfg->val($sec, "email_server") || undef;
+  my $sender   = $cfg->val($sec, "email_sender") || undef;
+  my $user     = $cfg->val($sec, "email_user") || undef;
+  my $password = $cfg->val($sec, "email_password") || undef;
+  my $receiver = $cfg->val($sec, "email_receiver") || undef;
+  my @receivers= split(/,\s*/, $receiver);
+
+  my $subject = $list->{level}
+                . ": "
+                . $list->{dc} . "/"
+                . $list->{host} . "/"
+                . $list->{metric} . " - "
+                . $list->{id};
+  $subject .= "\nContent-Type: text/html";
+
+  return undef unless defined $receiver;
+
+  my $smtp = Kapalarm::Email->new(
+    subject      => "$subject",
+    mailto       => \@receivers,
+    mailfrom     => $sender,
+    mailserver   => $server,
+    mailuser     => $user,
+    mailpassword => $password,
+  );
+
+  my @msg;
+  push @msg, "Time: " . $list->{time};
+  push @msg, "Id: " . $list->{id};
+  push @msg, "Duration: " . second_convert($list->{duration});
+  push @msg, "Message: " . $list->{sample};
+
+  if ($is_sasl) {
+    $smtp->send_smtp(@msg);
+  }
+  else {
+    $smtp->send(@msg);
+  }
+}
+
+# get msg from kapacitor exec handler
+while(<>) {
+  my $list = parse_kapjson($_, $default_dc);
+  my $key  = $redis_r->key_get(%$list);
+  next unless defined $key;
+
+  if ($redis_r->is_key_exist($key)) {
+    # admin may change the message format
+    my $finger     = $list->{finger};
+    my $finger_pre = $redis_r->field_get($key, 'finger');
+    my $time       = $list->{time};
+    my $time_pre   = $redis_r->field_get($key, 'time');
+    my $level      = $list->{level};
+    my $level_pre  = $redis_r->field_get($key, 'level');
+
+    if (($finger eq $finger_pre)
+         && ($time eq $time) ) {
+      # skip repeate items
+      $log->info("$key : skip as finger and time were not change");
+      next;
+    }
+
+    if ($finger eq $finger_pre) {
+      $log->info("$key : finger was not change, only incre recvcnt");
+      $redis_r->cnt_incre($key, 'recvcnt');
+    }
+    else {
+      # reset recvcnt when finger change
+      $log->info("$key : finger was changed, set recvcnt value to 1, sendcnt to 0");
+      $redis_r->field_set($key, 'recvcnt', 1);
+      $redis_r->field_set($key, 'sendcnt', 0);
+    }
+
+    if ($level ne 'OK' && $level_pre eq 'OK') {
+      # reset recvnt when level change to nok ok
+      $log->info("$key : level was changed from OK to WARN/CRITICAL, reset recvcnt 1, sendcnt to 0");
+      $redis_r->field_set($key, 'recvcnt', 1);
+      $redis_r->field_set($key, 'sendcnt', 0);
+    }
+
+    foreach my $k ((qw(time level sample finger duration plevel))) {
+      if ($redis_r->field_set($key, $k, $list->{$k})) {
+        $log->info("set $key $k ok");
+      }
+    }
+  }
+  else {
+    if ($redis_r->common_set(%$list)) {
+      $log->info("common_set ok");
+    }
+  }
+
+  # check whether send email or not
+  my $newv = $redis_r->common_get($key);
+  next unless defined $newv;
+
+  # white list
+  if ($enable_white && is_white($redis_r, %$newv)) {
+    $log->info("$key is in white list");
+    next;
+  }
+
+  if (is_send($boundary, %$newv)) {
+    my $send_ok = 0;
+    while(!$send_ok && $tryfail--) {
+      $send_ok = send_mail($cfg, "email", $newv);
+      if ($send_ok) {
+        $log->info("$key send mail ok");
+      }
+      else {
+        $log->info("$key send mail error") unless $send_ok;
+        sleep 1;
+      }
+    }
+    if ($send_ok) {
+      $log->info("incre $key sendcnt ok") 
+           if $redis_r->cnt_incre($key, 'sendcnt');
+    }
+  }
+}
+
+# ###################################################################
+# Documentation.
+# ###################################################################
+
+=head1 OPTIONS
+
+=over 4
+
+=item conf
+
+email, redis.. config file, default is /etc/kapalarm/kap.conf,
+eg:
+
+  [kapalarm]
+  try_on_failure=3  # max times when send mail failuer
+  send_boundary=20  # max times that email send
+  enable_whitelist=1
+
+  [email]
+  email_use_sasl=0  # whether enable sasl, default is false
+  email_server=10.0.21.5
+  email_sender=monitor@kapacitor.com
+  email_receiver=arstercz@gmail.com
+
+  [redis]
+  host=10.0.21.5:6379
+  password=
+  prefix=kap        # all redis key prefix string
+
+  [exec-log]
+  logfile=/var/log/kapalarm/kap-exec.log
+
+  [white-log]
+  logfile=/var/log/kapalarm/kap-white.log
+
+  [status-log]
+  logfile=/var/log/kapalarm/kap-status.log
+
+=item redis
+
+  redis server, default is 127.0.0.1:6379, redis in conf will
+  overwrite this option.
+
+=item help
+
+  print help info.
+
+=back
+
+=head1 AUTHOR
+
+arstercz@gmail.com
+
+=head1 CHANGELOG
+
+v0.1.0 version
+
+=cut
