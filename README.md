@@ -2,7 +2,7 @@
 kapacitor-alarm
 ===============
 
-`kapacitor-alart` is a notify manager for kapacitor [exec handler](https://docs.influxdata.com/kapacitor/v1.5/event_handlers/exec/), support nitify aggregation and whitelist features. can be used with [kapacitor-tasks](https://github.com/arstercz/kapacitor-tasks).
+`kapacitor-alarm` is a notify manager for kapacitor [exec handler](https://docs.influxdata.com/kapacitor/v1.5/event_handlers/exec/), support notify aggregation and whitelist features, can be used with [kapacitor-tasks](https://github.com/arstercz/kapacitor-tasks).
 
 **currently only email notifications is support!**
 
@@ -15,9 +15,9 @@ kapacitor-alarm
    |  | telegraf |  | 
    |  +----------+  |
    |                |         +------------+         +-----------+
-   |  ...           |         | influxdb   |         |           |  exec handler    +-----------------+         +-------+
-   |                |  -------> opentsdb   <-------  | kapacitor <----------------  | kapacitor-alarm |  -----> | redis |
-   |                |         | prometheus |         |           |                  +-----------------+         +-------+
+   |  ...           |         | influxdb   |         |           |  exec handler    +-----------------+
+   |                |  -------> opentsdb   <-------  | kapacitor <----------------  | kapacitor-alarm |
+   |                |         | prometheus |         |           |                  +-----------------+
    |                |         +--^---------+         +-----------+
    |                | 
    |  +----------+  |
@@ -99,6 +99,10 @@ logfile=/var/log/kapalarm/kap-status.log
 ```
 
 ## How to use kapacitor-alarm
+
+[kap-exec](#kap-exec)
+[kap-white](#kap-white)
+[kap-status](#kap-status)
 
 #### kap-exec
 
