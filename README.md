@@ -94,6 +94,7 @@ prefix=kap                                 # all of the kap-xxx command will set
 
 [kap-exec]
 default_dc=beijng                          # default data centor if kapacitor-task does not set dc value.
+enable_record=1                            # whether record kapactior message or not.
 logfile=/var/log/kapalarm/kap-exec.log
 
 [kap-white]

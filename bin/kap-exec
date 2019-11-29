@@ -61,6 +61,8 @@ my $logfile  =
     $cfg->val("kap-exec", "logfile") || "/tmp/$0.log";
 my $default_dc =
     $cfg->val("kap-exec", "default_dc") || 'kapalarm';
+my $is_record =
+    $cfg->val("kap-exec", "enable_record") || 0;
 
 my $enable_white = 1;
 if(defined $cfg->val("kapalarm", "enable_whitelist")) {
@@ -155,7 +157,8 @@ sub send_mail {
   );
 
   my @msg;
-  push @msg, "Sendcnt: " . $list->{sendcnt};
+  # ensure sendcnt + 1
+  push @msg, "Sendcnt: " . $list->{sendcnt} + 1;
   push @msg, "Time: " . $list->{time};
   push @msg, "Id: " . $list->{id};
   push @msg, "Duration: " . second_convert($list->{duration});
@@ -174,6 +177,11 @@ while(<>) {
   my $list = parse_kapjson($_, $default_dc);
   my $key  = $redis_r->key_get(%$list);
   next unless defined $key;
+
+  if ($is_record) {
+    my $msg = $list->{time} . " - " . $list->{sample};
+    $log->info("msg: $msg");
+  }
 
   if ($redis_r->is_key_exist($key)) {
     # admin may change the message format
@@ -237,15 +245,14 @@ while(<>) {
       $send_ok = send_mail($cfg, "email", $newv);
       if ($send_ok) {
         $log->info("$key send mail ok");
+
+        $log->info("incre $key sendcnt ok") 
+            if $redis_r->cnt_incre($key, 'sendcnt');
       }
       else {
         $log->info("$key send mail error") unless $send_ok;
         sleep 1;
       }
-    }
-    if ($send_ok) {
-      $log->info("incre $key sendcnt ok") 
-           if $redis_r->cnt_incre($key, 'sendcnt');
     }
   }
 }
