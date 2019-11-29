@@ -115,7 +115,7 @@ logfile=/var/log/kapalarm/kap-status.log
 
 `kap-exec` must be set in `kapacitor tasks`, such as:
 ```
-.exec('/usr/local/bin/kap-exec', '--conf /etc/kapalarm/kap.conf')
+.exec('/usr/local/bin/kap-exec', '--conf, '/etc/kapalarm/kap.conf')
 ```
 
 #### kap-white
@@ -124,7 +124,7 @@ logfile=/var/log/kapalarm/kap-status.log
 ```
 dc:     enable/disable the whole dc hosts
 host:   enable/disable only one dc/host
-metric: enable/disable only on dc/host/metric
+metric: enable/disable only one dc/host/metric
 ```
 eg:
 ```
