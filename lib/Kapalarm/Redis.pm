@@ -93,7 +93,7 @@ sub common_set {
     return 0;
   }
 
-  if ($self->meta_set($prefix, $dc, $host)) {
+  if ($self->meta_set($dc, $host)) {
     $self->{log}->info("$key meta set ok");
   }
 
