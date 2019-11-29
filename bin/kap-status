@@ -152,8 +152,8 @@ sub get_status {
   my %status;
   foreach my $k (@$lists) {
     $status{$k}{dc_white} = $r->white_get_dc($dc) || 0;
-    $status{$k}{$h}{white_metrics} = []
-        unless exists $status{$k}{$h}{white_metrics};
+    $status{$k}{white_hosts} = []
+        unless exists $status{$k}{white_hosts};
 
     my $hosts = $r->meta_host_get($k);
     foreach my $h (@$hosts) {
