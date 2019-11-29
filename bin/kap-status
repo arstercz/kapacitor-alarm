@@ -92,11 +92,11 @@ sub dump_report {
     print   "  dc is white:       "
           . $status->{dc_white} . "\n"
           . "  hosts num:         "
-          . $status->{host_count} . "\n"
+          . ($status->{host_count} || 0) . "\n"
           . "  white hosts num:   "
-          . $status->{white_host_count} . "\n"
+          . ($status->{white_host_count} || 0) . "\n"
           . "  white metrics num: " 
-          . $status->{white_metric_count} . "\n"
+          . ($status->{white_metric_count} || 0) . "\n"
           . "  white hosts list:  "
           . join(', ', sort @{$status->{white_hosts}}) . "\n\n";
 
@@ -152,9 +152,15 @@ sub get_status {
   my %status;
   foreach my $k (@$lists) {
     $status{$k}{dc_white} = $r->white_get_dc($dc) || 0;
+    $status{$k}{$h}{white_metrics} = []
+        unless exists $status{$k}{$h}{white_metrics};
+
     my $hosts = $r->meta_host_get($k);
     foreach my $h (@$hosts) {
       $status{$k}{host_count}++;
+      $status{$k}{$h}{white_metrics} = []
+        unless exists $status{$k}{$h}{white_metrics};
+
       my $item   = $r->white_get_host_all($dc, $h);
       foreach my $m (keys %$item) {
         my $v = $item->{$m} || 0;
