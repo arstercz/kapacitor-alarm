@@ -40,7 +40,7 @@ sub is_send {
 
   my $n = int(_log2($rcnt));
   # only greater than sendcnt by one
-  if (($n - 1) == $scnt) {
+  if (($n - 1) >= $scnt) {
     # ignore when send many times email
     $status = 0 if $scnt > $bound;
     $status = 1;
