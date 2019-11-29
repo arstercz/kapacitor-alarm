@@ -13,6 +13,7 @@ CONFDIR   = $(ETCDIR)/kapalarm
 install_common:
 		mkdir -p $(DESTDIR) $(MODULEDIR) $(BINDIR) $(SBINDIR) $(LOGDIR) $(ETCDIR) $(CONFDIR)
 		cp -r lib/Kapalarm/* $(MODULEDIR)
+		id kapacitor && chown kapacitor.kapacitor $(LOGDIR)
 		[ -f $(CONFDIR)/kap.conf ] || cp etc/kap.conf $(CONFDIR)
 
 install_exec: install_exec
