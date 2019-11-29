@@ -142,7 +142,6 @@ sub send_mail {
                 . $list->{host} . "/"
                 . $list->{metric} . " - "
                 . $list->{id};
-  $subject .= "\nContent-Type: text/html";
 
   return undef unless defined $receiver;
 
@@ -156,6 +155,7 @@ sub send_mail {
   );
 
   my @msg;
+  push @msg, "Sendcnt: " . $list->{sendcnt};
   push @msg, "Time: " . $list->{time};
   push @msg, "Id: " . $list->{id};
   push @msg, "Duration: " . second_convert($list->{duration});
@@ -185,7 +185,7 @@ while(<>) {
     my $level_pre  = $redis_r->field_get($key, 'level');
 
     if (($finger eq $finger_pre)
-         && ($time eq $time) ) {
+         && ($time eq $time_pre) ) {
       # skip repeate items
       $log->info("$key : skip as finger and time were not change");
       next;
