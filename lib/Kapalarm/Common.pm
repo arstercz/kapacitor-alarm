@@ -58,9 +58,11 @@ sub second_convert {
 
 sub utc_to_local {
   my $time = shift;
+  my $zone = shift || "UTC";
+  $ENV{TZ} = $zone;
   
   # default is now
-  my $unixtime = str2time($time, "UTC") || time();
+  my $unixtime = str2time($time) || time();
   return strftime("%Y-%m-%dT%H:%M:%S", localtime($unixtime));
 }
 

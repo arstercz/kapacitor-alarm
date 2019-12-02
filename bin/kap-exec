@@ -113,7 +113,7 @@ sub parse_kapjson {
   $res_hash{id}     = $json->{id};
   $res_hash{level}  = $json->{level};
   $res_hash{plevel} = $json->{previousLevel};
-  $res_hash{time}   = utc_to_local($json->{time});
+  $res_hash{time}   = utc_to_local($json->{time}, "Asia/Shanghai");
   $res_hash{sample}   = msg_quote($json->{message});
   $res_hash{duration} = int($json->{duration} / 100000000); # second unit
   $res_hash{finger}   = msg_md5(msg_finger($json->{message}));
