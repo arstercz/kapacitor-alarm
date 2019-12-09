@@ -99,6 +99,7 @@ my $redis_r =
 
 sub get_msg_meta {
   # WARNING: beijing/dbhost/memory - used_pct: 70.26%, used: 88.00GB, buffer/cached: 26.00GB, total:125.00GB
+  # WARNING: beijing/dbhost/10.0.21.5:3306/mysql_qps - qps: 24.55, details: select: 22.09, update: 0.00, ......
   my $message = shift;
   my ($meta) = ($message =~ /^\w+:\s+(.+?)\s+.+/);
 
