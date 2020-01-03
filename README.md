@@ -144,10 +144,10 @@ $ kap-white --type host --dc beijing --host host1 --enable  # ignore notify
 $ kap-white --type host --dc beijing --host host1 --disable # notity
 
 # get only one metric status, dc and host must be set:
-$ kap-white --type host --dc beijing --host host1 --metric diskio
+$ kap-white --type metric --dc beijing --host host1 --metric diskio
 
-$ kap-white --type host --dc beijing --host host1 --metric diskio --enable  # ignore notify
-$ kap-white --type host --dc beijing --host host1 --metric diskio --disable # notify
+$ kap-white --type metric --dc beijing --host host1 --metric diskio --enable  # ignore notify
+$ kap-white --type metric --dc beijing --host host1 --metric diskio --disable # notify
 ```
 
 #### kap-status
