@@ -160,6 +160,7 @@ sub get_status {
       $status{$k}{host_count}++;
       $status{$k}{$h}{white_metrics} = []
         unless exists $status{$k}{$h}{white_metrics};
+      push @{$status{$k}{white_hosts}}, $h;
 
       my $item   = $r->white_get_host_all($dc, $h);
       foreach my $m (keys %$item) {
@@ -167,7 +168,6 @@ sub get_status {
         if ($m eq 'is_white') {
           if ($v) {
             $status{$k}{white_host_count}++;
-            push @{$status{$k}{white_hosts}}, $h;
           }
           else {
             $status{$k}{nonwhite_host_count}++;
