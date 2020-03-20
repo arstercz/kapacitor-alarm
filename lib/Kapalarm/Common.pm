@@ -70,7 +70,7 @@ sub msg_finger {
   my $msg = shift;
   # 'WARNING: dc/hostname/memory - used_pct: 70.26%, used: 88.00GB, buffer/cached: 26.00GB, total:125.00GB'
   $msg =~ s/^.+?-//;
-  $msg =~ s/:\s*\d+(?:.\d+){0,1}/: xxx/g;
+  $msg =~ s/\s*(\d+){1,}/xx/g;
   return "$msg";
 }
 
