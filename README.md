@@ -52,7 +52,7 @@ the `kap-white` command can be used to set whitelist to the redis. `kap-exec` wi
 `kapcitor-alarm` depend on the following package:
 ```
 perl-Data-Dumper
-perl-TimeDate
+perl-DateTime
 perl-Digest-MD5
 perl-Redis
 perl-JSON
@@ -76,7 +76,7 @@ all of the `kap-xxxx` command will read the same configure file, default is `/et
 # /etc/kapalarm/kap.conf
 [kapalarm]
 try_on_failure=3             # retry max times when send email failuer
-send_boundary=20             # send max times every metric
+send_boundary=8              # send max times every metric, will recycle send in very boundary
 enable_whitelist=1           # enable whitelist feature, kap-exec will ignore notify when metric unit meet the whitelist.
 
 [email]

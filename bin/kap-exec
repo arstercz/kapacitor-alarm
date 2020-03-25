@@ -240,7 +240,7 @@ while(<>) {
     next;
   }
 
-  if (is_send($boundary, %$newv)) {
+  if (is_send(bound => $boundary, %$newv)) {
     my $send_ok = 0;
     while(!$send_ok && $tryfail--) {
       $send_ok = send_mail($cfg, "email", $newv);

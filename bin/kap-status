@@ -24,7 +24,6 @@ use Config::IniFiles;
 use Kapalarm::Common qw(time_print);
 use Kapalarm::Log;
 use Kapalarm::Redis;
-use Kapalarm::Rule qw(is_send);
 
 my ($debug, $help, $dc, $host);
 my $redis = "127.0.0.1:6379";

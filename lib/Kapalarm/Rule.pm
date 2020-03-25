@@ -3,7 +3,7 @@ package Kapalarm::Rule;
 use strict;
 use warnings;
 use English qw(-no_match_vars);
-use Redis;
+#use Redis;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
 
 use Data::Dumper;
@@ -16,14 +16,16 @@ require Exporter;
 @EXPORT    = qw( is_send is_white);
 $VERSION = '0.1.0';
 
-# use log2 algorithm to determin wheter send email or not, use step method
+# we use log2 algorithm to determin wheter send email or not, 8 is 
+# recommand to bound, we'll recycle to handle send when sendcnt 
+# greater than bound. use step method
 # list tcp retransmision ways:
 # recvcnt: 1 2 3 4 5 6 7 8 9 ....
 # sendcnt: 1 1 1 2 2 2 2 3 3.....
 # is_send: Y N N Y N N N Y N ....
 sub is_send {
-  my $bound   = shift || 15;
   my %args    = @_;
+  my $bound   = $args{bound} || 8;
 
   # send email when level change to OK from WARNING
   if ($args{level} eq 'OK' && $args{recvcnt} > 1 &&
@@ -39,11 +41,16 @@ sub is_send {
   $status = 1 if $rcnt == 1;
 
   my $n = int(_log2($rcnt));
+
+  # cycle handle if sendcnt greater than bound
+  if ($scnt > $bound) {
+    $scnt = $scnt % $bound;
+    $n    = int(_log2(($rcnt % (2**$bound))) + 1);
+  }
+
   # only greater than sendcnt by one
   if (($n - 1) >= $scnt) {
-    # ignore when send many times email
-    $status = 0 if $scnt > $bound;
-    $status = 1;
+      $status = 1;
   }
   
   return $status;
