@@ -44,12 +44,18 @@ sub is_send {
 
   # cycle handle if sendcnt greater than bound
   if ($scnt > $bound) {
+
     $scnt = $scnt % $bound;
-    $n    = int(_log2(($rcnt % (2**$bound))) + 1);
+    if ($rcnt > 2**($bound + 1)) {
+      $n  = int(_log2($rcnt  % (2**$bound)));
+    }
+    else {
+      $n  = int(_log2($rcnt));
+    }
   }
 
   # only greater than sendcnt by one
-  if (($n - 1) >= $scnt) {
+  if ($n - 1 >= $scnt) {
       $status = 1;
   }
   
